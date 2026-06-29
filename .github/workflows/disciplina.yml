@@ -1,32 +1,21 @@
 name: Secretaria da Melody
 
-# Horários em UTC. Brasília é UTC-3 (sem horário de verão), então UTC = local + 3.
+# Os lembretes ao longo do dia são disparados pelo cron-job.org (agendador
+# confiável, chama a Z-API direto). Aqui fica SÓ a resposta do check-in da noite,
+# que precisa ler a mensagem da Melody (1/2/3) e ramificar — isso exige código.
+# Horário em UTC: 21h local (Brasília, UTC-3) = 00:00 UTC do dia seguinte.
 on:
   schedule:
-    - cron: "45 8 * * 1-5"    # 05:45 academia
-    - cron: "55 11 * * 1-5"   # 08:55 resumo do dia
-    - cron: "0 12 * * 1-5"    # 09:00
-    - cron: "30 12 * * 1-5"   # 09:30
-    - cron: "30 13 * * 1-5"   # 10:30
-    - cron: "0 14 * * 1-5"    # 11:00
-    - cron: "30 14 * * 1-5"   # 11:30
-    - cron: "40 14 * * 1-5"   # 11:40
-    - cron: "0 15 * * 1-5"    # 12:00
-    - cron: "0 16 * * 1-5"    # 13:00 almoço
-    - cron: "0 17 * * 1-5"    # 14:00
-    - cron: "0 19 * * 1-5"    # 16:00
-    - cron: "30 22 * * *"     # 19:30 dança (todos os dias)
-    - cron: "30 23 * * 1-5"   # 20:30 check-in
-    - cron: "0 0 * * 2-6"     # 21:00 local: resposta do check-in
+    - cron: "0 0 * * 2-6"   # 21:00 local (seg a sex) -> resposta do check-in
   workflow_dispatch:
     inputs:
       acao:
-        description: "Deixe em branco para um envio de teste, ou use --fire HH:MM"
+        description: "Vazio = envio de teste. Ou: --fire HH:MM, ou: checkin"
         required: false
         default: ""
 
 jobs:
-  lembrete:
+  secretaria:
     runs-on: ubuntu-latest
     env:
       TZ: America/Sao_Paulo
@@ -40,33 +29,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Disparo manual (teste)
+      - name: Resposta do check-in (agendado)
+        if: github.event_name == 'schedule'
+        run: python responder_checkin.py
+
+      - name: Disparo manual
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if [ -z "${{ github.event.inputs.acao }}" ]; then
-            python enviar.py "Teste da sua secretaria na nuvem. Se voce recebeu esta mensagem, o robo esta no ar e vai te acompanhar a partir de segunda."
-          else
-            python rotina_diaria.py ${{ github.event.inputs.acao }}
-          fi
-
-      - name: Disparo agendado
-        if: github.event_name == 'schedule'
-        run: |
-          case "${{ github.event.schedule }}" in
-            "45 8 * * 1-5")   python rotina_diaria.py --fire 05:45 ;;
-            "55 11 * * 1-5")  python rotina_diaria.py --fire 08:55 ;;
-            "0 12 * * 1-5")   python rotina_diaria.py --fire 09:00 ;;
-            "30 12 * * 1-5")  python rotina_diaria.py --fire 09:30 ;;
-            "30 13 * * 1-5")  python rotina_diaria.py --fire 10:30 ;;
-            "0 14 * * 1-5")   python rotina_diaria.py --fire 11:00 ;;
-            "30 14 * * 1-5")  python rotina_diaria.py --fire 11:30 ;;
-            "40 14 * * 1-5")  python rotina_diaria.py --fire 11:40 ;;
-            "0 15 * * 1-5")   python rotina_diaria.py --fire 12:00 ;;
-            "0 16 * * 1-5")   python rotina_diaria.py --fire 13:00 ;;
-            "0 17 * * 1-5")   python rotina_diaria.py --fire 14:00 ;;
-            "0 19 * * 1-5")   python rotina_diaria.py --fire 16:00 ;;
-            "30 22 * * *")    python rotina_diaria.py --fire 19:30 ;;
-            "30 23 * * 1-5")  python rotina_diaria.py --fire 20:30 ;;
-            "0 0 * * 2-6")    python responder_checkin.py ;;
-            *) echo "Horario nao mapeado: ${{ github.event.schedule }}" ;;
+          case "${{ github.event.inputs.acao }}" in
+            "")        python enviar.py "Teste da secretaria (GitHub). Se chegou, esta tudo certo." ;;
+            "checkin") python responder_checkin.py ;;
+            *)         python rotina_diaria.py ${{ github.event.inputs.acao }} ;;
           esac
